@@ -9,19 +9,39 @@ espacio entre palabra y palabra.
 
 
 """
+from typing import List, Tuple
+
 import pandas as pd
+
+
 def ingest_data():
-    # Lee el archivo 'clusters_report.txt'
-    with open('clusters_report.txt', 'r') as file:
-        lines = file.readlines()
-    # Elimina líneas en blanco y líneas de separación
-    lines = [line.strip() for line in lines if line.strip() and not line.startswith('-')]
-    # Separa las primeras tres columnas y combina el resto en la última columna
-    data = []
-    for line in lines:
-        parts = line.split()
-        data.append(parts[:3] + [' '.join(parts[3:])])
-    # Crea DF
-    df = pd.DataFrame(data, columns=['cluster', 'cantidad_de_palabras_clave', 'porcentaje_de_palabras_clave', 'principales_palabras_clave'])
-    df.columns = df.columns.str.replace(' ', '_').str.lower()
-    return df
+    column_limits = [(0, 9), (9, 25), (25, 41), (41, 118)]
+    column_names = get_column_names(column_limits)
+
+    return (pd.read_fwf('clusters_report.txt',
+                        skiprows=4,
+                        colspecs=column_limits,
+                        header=None,
+                        names=column_names,
+                        converters={'porcentaje_de_palabras_clave': clean_percentage()})
+            .fillna(method='ffill')
+            .astype({"cluster": int, "cantidad_de_palabras_clave": int, 'porcentaje_de_palabras_clave': float})
+            .groupby([c for c in column_names if c != "principales_palabras_clave"], as_index=False)[column_names[3]]
+            .apply(clean_keywords()))
+
+
+def get_column_names(limits: List[Tuple[int, int]]) -> List[str]:
+    return (pd.read_fwf('clusters_report.txt', nrows=2, colspecs=limits, header=None)
+            .fillna('')
+            .apply(lambda x: ' '.join(x).strip().replace(' ', '_').lower())
+            .values)
+
+
+def clean_percentage():
+    return lambda x: x.replace('%', '').replace(',', '.').strip()
+
+
+def clean_keywords():
+    return lambda x: ' '.join(x.apply(
+        lambda y: ' '.join(y.replace('.', '').split())
+    ))
